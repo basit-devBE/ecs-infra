@@ -1,0 +1,20 @@
+template-file-path: ./template.yaml
+parameters:
+  EnvironmentName: ecs-lab
+  VpcCIDR: 10.0.0.0/16
+  PublicSubnet1CIDR: 10.0.1.0/24
+  PublicSubnet2CIDR: 10.0.2.0/24
+  PrivateSubnet1CIDR: 10.0.3.0/24
+  PrivateSubnet2CIDR: 10.0.4.0/24
+  RepositoryName: ecs-lab-app
+  GitHubOrg: basit-devBE
+  AppRepoName: ecs-app
+  HealthCheckPath: /actuator/health
+  ContainerPort: 8080
+  Cpu: '256'
+  Memory: '512'
+  BootstrapImage: public.ecr.aws/nginx/nginx:stable-alpine
+tags:
+  Project: ecs-cicd-lab
+  ManagedBy: cloudformation-gitsync
+  Environment: production
