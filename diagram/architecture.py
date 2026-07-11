@@ -45,16 +45,16 @@ with Diagram(
     logs = Cloudwatch("CloudWatch\nLogs")
     oidc = IAMRole("OIDC Role\n(GitHub Actions)")
 
-    with Cluster("AWS Region: us-east-1"):
+    with Cluster("AWS Region: eu-central-1 (Frankfurt)"):
         with Cluster("Custom VPC  10.0.0.0/16"):
 
-            with Cluster("Public Subnets\n(us-east-1a / us-east-1b)"):
+            with Cluster("Public Subnets\n(eu-central-1a / eu-central-1b)"):
                 igw = InternetGateway("Internet\nGateway")
                 alb = ALB("Application\nLoad Balancer\n:80 (prod)\n:8080 (test)")
                 nat1 = NATGateway("NAT GW\nAZ-1a")
                 nat2 = NATGateway("NAT GW\nAZ-1b")
 
-            with Cluster("Private Subnets\n(us-east-1a / us-east-1b)"):
+            with Cluster("Private Subnets\n(eu-central-1a / eu-central-1b)"):
                 with Cluster("ECS Fargate Service\n(Blue / Green tasks)"):
                     task_blue = Fargate("Task\n(Blue)")
                     task_green = Fargate("Task\n(Green)")
