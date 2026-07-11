@@ -41,7 +41,7 @@ with Diagram(
     eventbridge = Eventbridge("EventBridge\nECR Push Rule")
     pipeline = Codepipeline("CodePipeline")
     codedeploy = Codedeploy("CodeDeploy\nBlue/Green")
-    artifacts = S3("S3\nArtifact Bucket")
+    artifacts = S3("S3\nArtifact Store\n(internal)")
     logs = Cloudwatch("CloudWatch\nLogs")
     oidc = IAMRole("OIDC Role\n(GitHub Actions)")
 
@@ -72,7 +72,7 @@ with Diagram(
     # CD trigger
     ecr >> Edge(label="image push event") >> eventbridge
     eventbridge >> Edge(label="StartPipelineExecution") >> pipeline
-    artifacts >> Edge(label="appspec.json\ntaskdef.json") >> pipeline
+    github >> Edge(label="appspec.json\ntaskdef.json") >> pipeline
     pipeline >> codedeploy
     codedeploy >> Edge(label="deploy green") >> task_green
     codedeploy >> Edge(label="shift traffic") >> alb

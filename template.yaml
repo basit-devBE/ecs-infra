@@ -36,6 +36,15 @@ Parameters:
     Type: String
     Default: ecs-app
     Description: GitHub app repository name — OIDC trust is scoped to this repo
+  AppRepoBranch:
+    Type: String
+    Default: main
+    Description: Branch in the app repo that CodePipeline tracks
+  CodeStarConnectionArn:
+    Type: String
+    Description: >
+      ARN of the CodeConnections GitHub connection
+      (create in AWS Console under Developer Tools - Connections, then authorize it)
 
   HealthCheckPath:
     Type: String
@@ -342,7 +351,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName: !Sub ${EnvironmentName}-endpoint-sg
-      GroupDescription: VPC interface endpoints - HTTPS from ECS tasks and VPC CIDR
+      GroupDescription: VPC interface endpoints - HTTPS from ECS tasks
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -350,11 +359,6 @@ Resources:
           ToPort: 443
           SourceSecurityGroupId: !Ref EcsSecurityGroup
           Description: HTTPS from ECS tasks
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: !Ref VpcCIDR
-          Description: HTTPS from VPC (Lambda custom resource during stack creation)
       Tags:
         - Key: Name
           Value: !Sub ${EnvironmentName}-endpoint-sg
@@ -558,6 +562,11 @@ Resources:
                 Resource: !GetAtt EcrRepository.Arn
               - Effect: Allow
                 Action:
+                  - codestar-connections:UseConnection
+                  - codeconnections:UseConnection
+                Resource: !Ref CodeStarConnectionArn
+              - Effect: Allow
+                Action:
                   - codedeploy:CreateDeployment
                   - codedeploy:GetDeployment
                   - codedeploy:GetDeploymentConfig
@@ -617,33 +626,6 @@ Resources:
                 Action:
                   - codepipeline:StartPipelineExecution
                 Resource: !Sub arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${EnvironmentName}-pipeline
-      Tags:
-        - Key: Project
-          Value: ecs-cicd-lab
-
-  LambdaCustomResourceRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub ${EnvironmentName}-lambda-cfn-role
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-      Policies:
-        - PolicyName: S3Seed
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:PutObject
-                  - s3:DeleteObject
-                Resource: !Sub ${ArtifactBucket.Arn}/*
       Tags:
         - Key: Project
           Value: ecs-cicd-lab
@@ -875,98 +857,6 @@ Resources:
               Bool:
                 aws:SecureTransport: 'false'
 
-  SeedArtifactsFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: !Sub ${EnvironmentName}-seed-artifacts
-      Runtime: python3.12
-      Handler: index.handler
-      Role: !GetAtt LambdaCustomResourceRole.Arn
-      Timeout: 60
-      Environment:
-        Variables:
-          BUCKET: !Ref ArtifactBucket
-          EXECUTION_ROLE_ARN: !GetAtt EcsTaskExecutionRole.Arn
-          TASK_ROLE_ARN: !GetAtt EcsTaskRole.Arn
-          LOG_GROUP: !Ref CloudWatchLogGroup
-          REGION: !Ref AWS::Region
-          TASK_FAMILY: !Sub ${EnvironmentName}-app
-          CONTAINER_PORT: !Sub '${ContainerPort}'
-      Code:
-        ZipFile: |
-          import json, zipfile, io, os, boto3, urllib.request
-
-          def send(event, context, status, reason="OK"):
-              body = json.dumps({
-                  "Status": status, "Reason": reason,
-                  "PhysicalResourceId": "SeedArtifacts",
-                  "StackId": event["StackId"],
-                  "RequestId": event["RequestId"],
-                  "LogicalResourceId": event["LogicalResourceId"],
-              }).encode()
-              req = urllib.request.Request(
-                  event["ResponseURL"], data=body,
-                  headers={"Content-Type": "application/json", "Content-Length": str(len(body))},
-                  method="PUT")
-              urllib.request.urlopen(req)
-
-          def handler(event, context):
-              if event["RequestType"] == "Delete":
-                  return send(event, context, "SUCCESS")
-              try:
-                  bucket    = os.environ["BUCKET"]
-                  region    = os.environ["REGION"]
-                  exec_role = os.environ["EXECUTION_ROLE_ARN"]
-                  task_role = os.environ["TASK_ROLE_ARN"]
-                  log_group = os.environ["LOG_GROUP"]
-                  family    = os.environ["TASK_FAMILY"]
-                  port      = int(os.environ["CONTAINER_PORT"])
-
-                  appspec = {"version": "0.0", "Resources": [{"TargetService": {
-                      "Type": "AWS::ECS::Service",
-                      "Properties": {
-                          "TaskDefinition": "<TASK_DEFINITION>",
-                          "LoadBalancerInfo": {"ContainerName": "app", "ContainerPort": port}
-                      }}}]}
-
-                  taskdef = {
-                      "family": family, "networkMode": "awsvpc",
-                      "requiresCompatibilities": ["FARGATE"],
-                      "cpu": "256", "memory": "512",
-                      "executionRoleArn": exec_role, "taskRoleArn": task_role,
-                      "containerDefinitions": [{
-                          "name": "app", "image": "<IMAGE1_NAME>",
-                          "portMappings": [{"containerPort": port, "protocol": "tcp"}],
-                          "essential": True,
-                          "logConfiguration": {
-                              "logDriver": "awslogs",
-                              "options": {"awslogs-group": log_group, "awslogs-region": region,
-                                          "awslogs-stream-prefix": "ecs"}
-                          }
-                      }]
-                  }
-
-                  buf = io.BytesIO()
-                  with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                      zf.writestr("appspec.json", json.dumps(appspec))
-                      zf.writestr("taskdef.json", json.dumps(taskdef))
-                  buf.seek(0)
-                  boto3.client("s3").put_object(
-                      Bucket=bucket, Key="deployment-artifacts.zip", Body=buf.read())
-                  send(event, context, "SUCCESS")
-              except Exception as e:
-                  send(event, context, "FAILED", str(e))
-
-      Tags:
-        - Key: Project
-          Value: ecs-cicd-lab
-
-  SeedArtifactsCustomResource:
-    Type: AWS::CloudFormation::CustomResource
-    DependsOn: ArtifactBucket
-    Properties:
-      ServiceToken: !GetAtt SeedArtifactsFunction.Arn
-
   CodeDeployApplication:
     Type: AWS::CodeDeploy::Application
     Properties:
@@ -1007,7 +897,6 @@ Resources:
 
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
-    DependsOn: SeedArtifactsCustomResource
     Properties:
       Name: !Sub ${EnvironmentName}-pipeline
       RoleArn: !GetAtt CodePipelineRole.Arn
@@ -1034,12 +923,14 @@ Resources:
               ActionTypeId:
                 Category: Source
                 Owner: AWS
-                Provider: S3
+                Provider: CodeStarSourceConnection
                 Version: '1'
               Configuration:
-                S3Bucket: !Ref ArtifactBucket
-                S3ObjectKey: deployment-artifacts.zip
-                PollForSourceChanges: 'false'
+                ConnectionArn: !Ref CodeStarConnectionArn
+                FullRepositoryId: !Sub ${GitHubOrg}/${AppRepoName}
+                BranchName: !Ref AppRepoBranch
+                DetectChanges: 'false'
+                OutputArtifactFormat: CODE_ZIP
               OutputArtifacts:
                 - Name: SourceArtifact
               RunOrder: 1
@@ -1109,3 +1000,11 @@ Outputs:
 
   EcsServiceName:
     Value: !GetAtt EcsService.Name
+
+  ExecutionRoleArn:
+    Description: ECS Task Execution Role ARN - used in taskdef.json (generated by GitHub Actions)
+    Value: !GetAtt EcsTaskExecutionRole.Arn
+
+  TaskRoleArn:
+    Description: ECS Task Role ARN - used in taskdef.json (generated by GitHub Actions)
+    Value: !GetAtt EcsTaskRole.Arn
