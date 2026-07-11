@@ -17,6 +17,7 @@ parameters:
   Memory: '512'
   BootstrapRepositoryName: ecs-lab-bootstrap
   BootstrapImageTag: latest
+  S3PrefixListId: pl-6ea54007
 tags:
   Project: ecs-cicd-lab
   ManagedBy: cloudformation-gitsync

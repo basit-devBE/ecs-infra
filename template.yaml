@@ -71,6 +71,16 @@ Parameters:
     Default: latest
     Description: Tag of the placeholder image in BootstrapRepositoryName.
 
+  S3PrefixListId:
+    Type: AWS::EC2::PrefixList::Id
+    Description: >
+      Managed prefix list ID for the regional S3 service (com.amazonaws.<region>.s3).
+      ECR image layers are fetched via S3 even through the gateway endpoint, using
+      public S3 IP ranges outside the VPC CIDR — the ECS security group needs an
+      explicit egress rule to this prefix list or image pulls time out.
+      Look up via: aws ec2 describe-managed-prefix-lists --filters
+      Name=prefix-list-name,Values=com.amazonaws.<region>.s3
+
 Resources:
 
   VPC:
@@ -367,6 +377,16 @@ Resources:
       ToPort: 443
       CidrIp: !Ref VpcCIDR
       Description: HTTPS to VPC endpoints (ECR, CloudWatch, SSM)
+
+  EcsEgressToS3:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref EcsSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      DestinationPrefixListId: !Ref S3PrefixListId
+      Description: HTTPS to S3 gateway endpoint (ECR image layers)
 
   EndpointSecurityGroup:
     Type: AWS::EC2::SecurityGroup
