@@ -296,7 +296,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName: !Sub ${EnvironmentName}-alb-sg
-      GroupDescription: ALB — HTTP/HTTPS from internet; port 8080 for blue/green test listener
+      GroupDescription: ALB - HTTP/HTTPS from internet; port 8080 for blue/green test listener
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -324,7 +324,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName: !Sub ${EnvironmentName}-ecs-sg
-      GroupDescription: ECS tasks — accept app traffic from ALB only
+      GroupDescription: ECS tasks - accept app traffic from ALB only
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -342,7 +342,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName: !Sub ${EnvironmentName}-endpoint-sg
-      GroupDescription: VPC interface endpoints — HTTPS from ECS tasks and VPC CIDR
+      GroupDescription: VPC interface endpoints - HTTPS from ECS tasks and VPC CIDR
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
