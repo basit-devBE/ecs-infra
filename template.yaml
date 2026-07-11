@@ -58,12 +58,18 @@ Parameters:
     Type: String
     Default: '512'
 
-  BootstrapImage:
+  BootstrapRepositoryName:
     Type: String
-    Default: public.ecr.aws/nginx/nginx:stable-alpine
+    Default: ecs-lab-bootstrap
     Description: >
-      Placeholder image used only for the initial CloudFormation task definition.
+      Name of a small, standalone ECR repository — created and seeded manually,
+      outside this stack — holding a placeholder image that satisfies the
+      /actuator/health check so the initial ECS service can reach steady state.
       CodeDeploy replaces it on first pipeline run.
+  BootstrapImageTag:
+    Type: String
+    Default: latest
+    Description: Tag of the placeholder image in BootstrapRepositoryName.
 
 Resources:
 
@@ -509,7 +515,9 @@ Resources:
             - ecr:BatchCheckLayerAvailability
             - ecr:GetDownloadUrlForLayer
             - ecr:BatchGetImage
-            Resource: !GetAtt EcrRepository.Arn
+            Resource:
+            - !GetAtt EcrRepository.Arn
+            - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${BootstrapRepositoryName}
           - Effect: Allow
             Action:
             - logs:CreateLogStream
@@ -758,7 +766,7 @@ Resources:
       TaskRoleArn: !GetAtt EcsTaskRole.Arn
       ContainerDefinitions:
       - Name: app
-        Image: !Ref BootstrapImage
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${BootstrapRepositoryName}:${BootstrapImageTag}'
         PortMappings:
         - ContainerPort: !Ref ContainerPort
           Protocol: tcp
