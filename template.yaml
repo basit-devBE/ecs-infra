@@ -60,10 +60,6 @@ Parameters:
   Memory:
     Type: String
     Default: '512'
-  BootstrapImage:
-    Type: String
-    Default: public.ecr.aws/nginx/nginx:stable-alpine
-    Description: Placeholder image used until the first real CodeDeploy deployment
 
 Resources:
 
@@ -746,7 +742,7 @@ Resources:
       TaskRoleArn: !GetAtt EcsTaskRole.Arn
       ContainerDefinitions:
         - Name: app
-          Image: !Ref BootstrapImage
+          Image: !Sub ${EcrRepository.RepositoryUri}:latest
           PortMappings:
             - ContainerPort: !Ref ContainerPort
               Protocol: tcp
@@ -770,7 +766,7 @@ Resources:
       ServiceName: !Sub ${EnvironmentName}-service
       Cluster: !Ref EcsCluster
       TaskDefinition: !Ref TaskDefinition
-      DesiredCount: 1
+      DesiredCount: 0
       LaunchType: FARGATE
       DeploymentController:
         Type: CODE_DEPLOY
