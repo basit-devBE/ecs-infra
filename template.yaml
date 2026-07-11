@@ -943,7 +943,7 @@ Resources:
             AppSpecTemplateArtifact: SourceArtifact
             AppSpecTemplatePath: appspec.json
             Image1ArtifactName: ECRImage
-            Image1ContainerName: app
+            Image1ContainerName: IMAGE1_NAME
           InputArtifacts:
           - Name: SourceArtifact
           - Name: ECRImage
