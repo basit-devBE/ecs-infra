@@ -894,7 +894,6 @@ Resources:
     Properties:
       Name: !Sub ${EnvironmentName}-pipeline
       RoleArn: !GetAtt CodePipelineRole.Arn
-      PipelineType: V2
       ArtifactStore:
         Type: S3
         Location: !Ref ArtifactBucket
