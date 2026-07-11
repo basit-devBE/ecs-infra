@@ -9,7 +9,7 @@ parameters:
   RepositoryName: ecs-lab-app
   GitHubOrg: basit-devBE
   AppRepoName: ecs-app
-  AppRepoBranch: main
+  AppRepoBranch: master
   CodeStarConnectionArn: arn:aws:codeconnections:eu-central-1:124355645722:connection/460f4052-2bd6-4ff3-a029-9255e1059b65
   HealthCheckPath: /actuator/health
   ContainerPort: 8080
