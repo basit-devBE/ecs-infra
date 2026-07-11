@@ -9,7 +9,6 @@ Run:
     python architecture.py
 """
 
-#hello
 
 from diagrams import Diagram, Cluster, Edge
 from diagrams.aws.compute import ECS, Fargate
