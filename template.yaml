@@ -72,7 +72,7 @@ Parameters:
     Description: Tag of the placeholder image in BootstrapRepositoryName.
 
   S3PrefixListId:
-    Type: AWS::EC2::PrefixList::Id
+    Type: String
     Description: >
       Managed prefix list ID for the regional S3 service (com.amazonaws.<region>.s3).
       ECR image layers are fetched via S3 even through the gateway endpoint, using
