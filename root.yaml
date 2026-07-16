@@ -1,0 +1,246 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  ECS CI/CD Lab — Abdul Basit Mohammed. Root template composing 6 nested stacks: network, ecr, iam,
+  alb, ecs, cicd.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: ecs-lab
+
+  VpcCIDR:
+    Type: String
+    Default: 10.0.0.0/16
+  PublicSubnet1CIDR:
+    Type: String
+    Default: 10.0.1.0/24
+  PublicSubnet2CIDR:
+    Type: String
+    Default: 10.0.2.0/24
+  PrivateSubnet1CIDR:
+    Type: String
+    Default: 10.0.3.0/24
+  PrivateSubnet2CIDR:
+    Type: String
+    Default: 10.0.4.0/24
+
+  RepositoryName:
+    Type: String
+    Default: ecs-lab-app
+
+  GitHubOrg:
+    Type: String
+    Description: GitHub username or organisation that owns the app repo
+  AppRepoName:
+    Type: String
+    Default: ecs-app
+    Description: GitHub app repository name — OIDC trust is scoped to this repo
+  AppRepoBranch:
+    Type: String
+    Default: main
+    Description: Branch in the app repo that CodePipeline tracks
+  InfraRepoName:
+    Type: String
+    Default: ecs-infra
+    Description: GitHub infra repository name — OIDC trust for the template-sync workflow is scoped to this repo
+  CodeStarConnectionArn:
+    Type: String
+    Description: >
+      ARN of the CodeConnections GitHub connection (create in AWS Console under Developer Tools - Connections, then authorize it)
+
+  HealthCheckPath:
+    Type: String
+    Default: /actuator/health
+
+  ContainerPort:
+    Type: Number
+    Default: 8080
+  Cpu:
+    Type: String
+    Default: '256'
+    AllowedValues: [ '256', '512', '1024', '2048', '4096' ]
+  Memory:
+    Type: String
+    Default: '512'
+
+  BootstrapRepositoryName:
+    Type: String
+    Default: ecs-lab-bootstrap
+    Description: >
+      Name of a small, standalone ECR repository — created and seeded manually,
+      outside this stack — holding a placeholder image that satisfies the
+      /actuator/health check so the initial ECS service can reach steady state.
+      CodeDeploy replaces it on first pipeline run.
+  BootstrapImageTag:
+    Type: String
+    Default: latest
+    Description: Tag of the placeholder image in BootstrapRepositoryName.
+
+  S3PrefixListId:
+    Type: String
+    Description: >
+      Managed prefix list ID for the regional S3 service (com.amazonaws.<region>.s3).
+      ECR image layers are fetched via S3 even through the gateway endpoint, using
+      public S3 IP ranges outside the VPC CIDR — the ECS security group needs an
+      explicit egress rule to this prefix list or image pulls time out.
+
+  TemplatesBucketName:
+    Type: String
+    Description: >
+      Name of the standalone S3 bucket hosting this template's nested-stack children
+      (templates/*.yaml). Created and seeded manually, outside this stack, for the
+      same reason BootstrapRepositoryName is standalone: this stack's own creation
+      depends on the templates already being present in S3.
+
+Resources:
+
+  NetworkStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://${TemplatesBucketName}.s3.${AWS::Region}.amazonaws.com/templates/network.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        VpcCIDR: !Ref VpcCIDR
+        PublicSubnet1CIDR: !Ref PublicSubnet1CIDR
+        PublicSubnet2CIDR: !Ref PublicSubnet2CIDR
+        PrivateSubnet1CIDR: !Ref PrivateSubnet1CIDR
+        PrivateSubnet2CIDR: !Ref PrivateSubnet2CIDR
+        ContainerPort: !Ref ContainerPort
+        S3PrefixListId: !Ref S3PrefixListId
+      Tags:
+      - Key: Project
+        Value: ecs-cicd-lab
+
+  EcrStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://${TemplatesBucketName}.s3.${AWS::Region}.amazonaws.com/templates/ecr.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        RepositoryName: !Ref RepositoryName
+      Tags:
+      - Key: Project
+        Value: ecs-cicd-lab
+
+  IamStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: EcrStack
+    Properties:
+      TemplateURL: !Sub https://${TemplatesBucketName}.s3.${AWS::Region}.amazonaws.com/templates/iam.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        GitHubOrg: !Ref GitHubOrg
+        AppRepoName: !Ref AppRepoName
+        InfraRepoName: !Ref InfraRepoName
+        CodeStarConnectionArn: !Ref CodeStarConnectionArn
+        BootstrapRepositoryName: !Ref BootstrapRepositoryName
+        EcrRepositoryArn: !GetAtt EcrStack.Outputs.EcrRepositoryArn
+        TemplatesBucketName: !Ref TemplatesBucketName
+      Tags:
+      - Key: Project
+        Value: ecs-cicd-lab
+
+  AlbStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: NetworkStack
+    Properties:
+      TemplateURL: !Sub https://${TemplatesBucketName}.s3.${AWS::Region}.amazonaws.com/templates/alb.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ContainerPort: !Ref ContainerPort
+        HealthCheckPath: !Ref HealthCheckPath
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        PublicSubnet1Id: !GetAtt NetworkStack.Outputs.PublicSubnet1Id
+        PublicSubnet2Id: !GetAtt NetworkStack.Outputs.PublicSubnet2Id
+        AlbSecurityGroupId: !GetAtt NetworkStack.Outputs.AlbSecurityGroupId
+      Tags:
+      - Key: Project
+        Value: ecs-cicd-lab
+
+  EcsStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - NetworkStack
+    - IamStack
+    - AlbStack
+    Properties:
+      TemplateURL: !Sub https://${TemplatesBucketName}.s3.${AWS::Region}.amazonaws.com/templates/ecs.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ContainerPort: !Ref ContainerPort
+        Cpu: !Ref Cpu
+        Memory: !Ref Memory
+        BootstrapRepositoryName: !Ref BootstrapRepositoryName
+        BootstrapImageTag: !Ref BootstrapImageTag
+        PrivateSubnet1Id: !GetAtt NetworkStack.Outputs.PrivateSubnet1Id
+        PrivateSubnet2Id: !GetAtt NetworkStack.Outputs.PrivateSubnet2Id
+        EcsSecurityGroupId: !GetAtt NetworkStack.Outputs.EcsSecurityGroupId
+        EcsTaskExecutionRoleArn: !GetAtt IamStack.Outputs.EcsTaskExecutionRoleArn
+        EcsTaskRoleArn: !GetAtt IamStack.Outputs.EcsTaskRoleArn
+        TargetGroupBlueArn: !GetAtt AlbStack.Outputs.TargetGroupBlueArn
+      Tags:
+      - Key: Project
+        Value: ecs-cicd-lab
+
+  CicdStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - IamStack
+    - EcsStack
+    - AlbStack
+    - EcrStack
+    Properties:
+      TemplateURL: !Sub https://${TemplatesBucketName}.s3.${AWS::Region}.amazonaws.com/templates/cicd.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        CodeStarConnectionArn: !Ref CodeStarConnectionArn
+        GitHubOrg: !Ref GitHubOrg
+        AppRepoName: !Ref AppRepoName
+        AppRepoBranch: !Ref AppRepoBranch
+        EcrRepositoryName: !GetAtt EcrStack.Outputs.EcrRepositoryName
+        CodePipelineRoleArn: !GetAtt IamStack.Outputs.CodePipelineRoleArn
+        CodeDeployRoleArn: !GetAtt IamStack.Outputs.CodeDeployRoleArn
+        EventBridgeRoleArn: !GetAtt IamStack.Outputs.EventBridgeRoleArn
+        EcsClusterName: !GetAtt EcsStack.Outputs.EcsClusterName
+        EcsServiceName: !GetAtt EcsStack.Outputs.EcsServiceName
+        ProductionListenerArn: !GetAtt AlbStack.Outputs.ProductionListenerArn
+        TestListenerArn: !GetAtt AlbStack.Outputs.TestListenerArn
+        TargetGroupBlueName: !GetAtt AlbStack.Outputs.TargetGroupBlueName
+        TargetGroupGreenName: !GetAtt AlbStack.Outputs.TargetGroupGreenName
+      Tags:
+      - Key: Project
+        Value: ecs-cicd-lab
+
+Outputs:
+  AlbEndpoint:
+    Description: Public URL — open this in a browser after the first deployment
+    Value: !Sub http://${AlbStack.Outputs.ApplicationLoadBalancerDnsName}
+
+  EcrRepositoryUri:
+    Description: ECR URI — use in docker build/push commands
+    Value: !GetAtt EcrStack.Outputs.EcrRepositoryUri
+
+  GitHubActionsRoleArn:
+    Description: Set this as the AWS_ROLE_ARN variable in your GitHub Actions app repo
+    Value: !GetAtt IamStack.Outputs.GitHubActionsRoleArn
+
+  TemplateSyncRoleArn:
+    Description: Set this as the AWS_ROLE_ARN variable in the ecs-infra repo (for the template-sync workflow)
+    Value: !GetAtt IamStack.Outputs.TemplateSyncRoleArn
+
+  PipelineName:
+    Value: !GetAtt CicdStack.Outputs.PipelineName
+
+  EcsClusterName:
+    Value: !GetAtt EcsStack.Outputs.EcsClusterName
+
+  EcsServiceName:
+    Value: !GetAtt EcsStack.Outputs.EcsServiceName
+
+  ExecutionRoleArn:
+    Description: ECS Task Execution Role ARN - used in taskdef.json (generated by GitHub Actions)
+    Value: !GetAtt IamStack.Outputs.EcsTaskExecutionRoleArn
+
+  TaskRoleArn:
+    Description: ECS Task Role ARN - used in taskdef.json (generated by GitHub Actions)
+    Value: !GetAtt IamStack.Outputs.EcsTaskRoleArn

@@ -1,0 +1,42 @@
+name: Sync CloudFormation Templates
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'templates/**'
+
+permissions:
+  id-token: write   # required for OIDC token request
+  contents: read    # only reading repo content, no commits made by this workflow
+
+env:
+  AWS_REGION: eu-central-1
+  TEMPLATES_BUCKET: ecs-lab-cfn-templates-124355645722
+
+jobs:
+  sync:
+    name: Sync child templates to S3
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Sync templates to S3
+        run: |
+          aws s3 sync ./templates/ "s3://${TEMPLATES_BUCKET}/templates/" \
+            --delete \
+            --exclude "*" \
+            --include "*.yaml"
+
+      - name: Summary
+        run: |
+          echo "### Templates synced to s3://${TEMPLATES_BUCKET}/templates/" >> $GITHUB_STEP_SUMMARY
+          echo "GitSync picks up root.yaml directly from git; children are staged in S3." >> $GITHUB_STEP_SUMMARY

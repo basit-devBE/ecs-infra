@@ -1,0 +1,64 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  ECS CI/CD Lab — ECR nested stack. The application's container image repository.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+  RepositoryName:
+    Type: String
+
+Resources:
+
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref RepositoryName
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: IMMUTABLE
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 10 immutable sha- tagged images",
+                "selection": {
+                  "tagStatus": "tagged",
+                  "tagPrefixList": ["sha-"],
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              },
+              {
+                "rulePriority": 2,
+                "description": "Expire untagged images after 1 day",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 1
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+      Tags:
+      - Key: Name
+        Value: !Sub ${EnvironmentName}-ecr
+      - Key: Project
+        Value: ecs-cicd-lab
+      - Key: ManagedBy
+        Value: cloudformation
+
+Outputs:
+  EcrRepositoryArn:
+    Value: !GetAtt EcrRepository.Arn
+  EcrRepositoryName:
+    Value: !Ref EcrRepository
+  EcrRepositoryUri:
+    Value: !GetAtt EcrRepository.RepositoryUri

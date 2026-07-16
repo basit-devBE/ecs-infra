@@ -1,0 +1,191 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  ECS CI/CD Lab — CI/CD nested stack. Artifact bucket, CodeDeploy blue/green, CodePipeline, EventBridge trigger.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+  CodeStarConnectionArn:
+    Type: String
+  GitHubOrg:
+    Type: String
+  AppRepoName:
+    Type: String
+  AppRepoBranch:
+    Type: String
+  EcrRepositoryName:
+    Type: String
+  CodePipelineRoleArn:
+    Type: String
+  CodeDeployRoleArn:
+    Type: String
+  EventBridgeRoleArn:
+    Type: String
+  EcsClusterName:
+    Type: String
+  EcsServiceName:
+    Type: String
+  ProductionListenerArn:
+    Type: String
+  TestListenerArn:
+    Type: String
+  TargetGroupBlueName:
+    Type: String
+  TargetGroupGreenName:
+    Type: String
+
+Resources:
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${EnvironmentName}-artifacts-${AWS::AccountId}
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+      - Key: Project
+        Value: ecs-cicd-lab
+
+  ArtifactBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtifactBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Deny
+          Principal: '*'
+          Action: 's3:*'
+          Resource:
+          - !GetAtt ArtifactBucket.Arn
+          - !Sub ${ArtifactBucket.Arn}/*
+          Condition:
+            Bool:
+              aws:SecureTransport: 'false'
+
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Sub ${EnvironmentName}-codedeploy-app
+      ComputePlatform: ECS
+
+  CodeDeployDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      DeploymentGroupName: !Sub ${EnvironmentName}-deployment-group
+      ServiceRoleArn: !Ref CodeDeployRoleArn
+      DeploymentConfigName: CodeDeployDefault.ECSAllAtOnce
+      DeploymentStyle:
+        DeploymentType: BLUE_GREEN
+        DeploymentOption: WITH_TRAFFIC_CONTROL
+      BlueGreenDeploymentConfiguration:
+        TerminateBlueInstancesOnDeploymentSuccess:
+          Action: TERMINATE
+          TerminationWaitTimeInMinutes: 5
+        DeploymentReadyOption:
+          ActionOnTimeout: CONTINUE_DEPLOYMENT
+          WaitTimeInMinutes: 0
+      ECSServices:
+      - ClusterName: !Ref EcsClusterName
+        ServiceName: !Ref EcsServiceName
+      LoadBalancerInfo:
+        TargetGroupPairInfoList:
+        - ProdTrafficRoute:
+            ListenerArns:
+            - !Ref ProductionListenerArn
+          TestTrafficRoute:
+            ListenerArns:
+            - !Ref TestListenerArn
+          TargetGroups:
+          - Name: !Ref TargetGroupBlueName
+          - Name: !Ref TargetGroupGreenName
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub ${EnvironmentName}-pipeline
+      RoleArn: !Ref CodePipelineRoleArn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+      - Name: Source
+        Actions:
+        - Name: DeploymentArtifacts
+          ActionTypeId:
+            Category: Source
+            Owner: AWS
+            Provider: CodeStarSourceConnection
+            Version: '1'
+          Configuration:
+            ConnectionArn: !Ref CodeStarConnectionArn
+            FullRepositoryId: !Sub ${GitHubOrg}/${AppRepoName}
+            BranchName: !Ref AppRepoBranch
+            DetectChanges: 'false'
+            OutputArtifactFormat: CODE_ZIP
+          OutputArtifacts:
+          - Name: SourceArtifact
+          RunOrder: 1
+      - Name: Deploy
+        Actions:
+        - Name: BlueGreenDeploy
+          ActionTypeId:
+            Category: Deploy
+            Owner: AWS
+            Provider: CodeDeployToECS
+            Version: '1'
+          Configuration:
+            ApplicationName: !Ref CodeDeployApplication
+            DeploymentGroupName: !Ref CodeDeployDeploymentGroup
+            TaskDefinitionTemplateArtifact: SourceArtifact
+            TaskDefinitionTemplatePath: taskdef.json
+            AppSpecTemplateArtifact: SourceArtifact
+            AppSpecTemplatePath: appspec.json
+            Image1ArtifactName: SourceArtifact
+            Image1ContainerName: IMAGE1_NAME
+          InputArtifacts:
+          - Name: SourceArtifact
+          RunOrder: 1
+
+  EcrPushEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub ${EnvironmentName}-ecr-push-trigger
+      Description: Trigger CodePipeline on every successful ECR image push
+      EventPattern:
+        source:
+        - aws.ecr
+        detail-type:
+        - ECR Image Action
+        detail:
+          action-type:
+          - PUSH
+          result:
+          - SUCCESS
+          repository-name:
+          - !Ref EcrRepositoryName
+      State: ENABLED
+      Targets:
+      - Id: TriggerPipeline
+        Arn: !Sub arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${EnvironmentName}-pipeline
+        RoleArn: !Ref EventBridgeRoleArn
+
+Outputs:
+  PipelineName:
+    Value: !Ref Pipeline
+  ArtifactBucketName:
+    Value: !Ref ArtifactBucket
+  CodeDeployApplicationName:
+    Value: !Ref CodeDeployApplication
+  CodeDeployDeploymentGroupName:
+    Value: !Ref CodeDeployDeploymentGroup
