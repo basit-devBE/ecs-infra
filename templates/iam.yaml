@@ -213,6 +213,10 @@ Resources:
             Resource: '*'
           - Effect: Allow
             Action:
+            - ecr:DescribeImages
+            Resource: !Ref EcrRepositoryArn
+          - Effect: Allow
+            Action:
             - iam:PassRole
             Resource:
             - !GetAtt EcsTaskExecutionRole.Arn

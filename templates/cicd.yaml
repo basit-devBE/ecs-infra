@@ -136,6 +136,18 @@ Resources:
           OutputArtifacts:
           - Name: SourceArtifact
           RunOrder: 1
+        - Name: ImageSource
+          ActionTypeId:
+            Category: Source
+            Owner: AWS
+            Provider: ECR
+            Version: '1'
+          Configuration:
+            RepositoryName: !Ref EcrRepositoryName
+            ImageTag: latest
+          OutputArtifacts:
+          - Name: ImageArtifact
+          RunOrder: 1
       - Name: Deploy
         Actions:
         - Name: BlueGreenDeploy
@@ -151,10 +163,11 @@ Resources:
             TaskDefinitionTemplatePath: taskdef.json
             AppSpecTemplateArtifact: SourceArtifact
             AppSpecTemplatePath: appspec.json
-            Image1ArtifactName: SourceArtifact
+            Image1ArtifactName: ImageArtifact
             Image1ContainerName: IMAGE1_NAME
           InputArtifacts:
           - Name: SourceArtifact
+          - Name: ImageArtifact
           RunOrder: 1
 
   EcrPushEventRule:

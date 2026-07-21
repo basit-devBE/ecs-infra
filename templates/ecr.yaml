@@ -16,7 +16,7 @@ Resources:
       RepositoryName: !Ref RepositoryName
       ImageScanningConfiguration:
         ScanOnPush: true
-      ImageTagMutability: IMMUTABLE
+      ImageTagMutability: MUTABLE
       EncryptionConfiguration:
         EncryptionType: AES256
       LifecyclePolicy:
@@ -25,18 +25,7 @@ Resources:
             "rules": [
               {
                 "rulePriority": 1,
-                "description": "Keep last 10 immutable sha- tagged images",
-                "selection": {
-                  "tagStatus": "tagged",
-                  "tagPrefixList": ["sha-"],
-                  "countType": "imageCountMoreThan",
-                  "countNumber": 10
-                },
-                "action": { "type": "expire" }
-              },
-              {
-                "rulePriority": 2,
-                "description": "Expire untagged images after 1 day",
+                "description": "Expire untagged (dangling) images after 1 day - every push to :latest orphans the previous image",
                 "selection": {
                   "tagStatus": "untagged",
                   "countType": "sinceImagePushed",
