@@ -186,8 +186,11 @@ Resources:
         EnvironmentName: !Ref EnvironmentName
         EcrRepositoryName: !GetAtt EcrStack.Outputs.EcrRepositoryName
         CodePipelineRoleArn: !GetAtt IamStack.Outputs.CodePipelineRoleArn
+        CodeBuildRoleArn: !GetAtt IamStack.Outputs.CodeBuildRoleArn
         CodeDeployRoleArn: !GetAtt IamStack.Outputs.CodeDeployRoleArn
         EventBridgeRoleArn: !GetAtt IamStack.Outputs.EventBridgeRoleArn
+        EcsTaskExecutionRoleArn: !GetAtt IamStack.Outputs.EcsTaskExecutionRoleArn
+        EcsTaskRoleArn: !GetAtt IamStack.Outputs.EcsTaskRoleArn
         EcsClusterName: !GetAtt EcsStack.Outputs.EcsClusterName
         EcsServiceName: !GetAtt EcsStack.Outputs.EcsServiceName
         ProductionListenerArn: !GetAtt AlbStack.Outputs.ProductionListenerArn

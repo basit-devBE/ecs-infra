@@ -9,9 +9,15 @@ Parameters:
     Type: String
   CodePipelineRoleArn:
     Type: String
+  CodeBuildRoleArn:
+    Type: String
   CodeDeployRoleArn:
     Type: String
   EventBridgeRoleArn:
+    Type: String
+  EcsTaskExecutionRoleArn:
+    Type: String
+  EcsTaskRoleArn:
     Type: String
   EcsClusterName:
     Type: String
@@ -102,6 +108,79 @@ Resources:
           - Name: !Ref TargetGroupBlueName
           - Name: !Ref TargetGroupGreenName
 
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${EnvironmentName}-build
+      Description: Generates taskdef.json and appspec.yaml for the CodeDeploy ECS deployment
+      ServiceRole: !Ref CodeBuildRoleArn
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub
+          - |
+            version: 0.2
+            phases:
+              build:
+                commands:
+                  - |
+                    jq -n \
+                      --arg executionRole "$TASK_EXECUTION_ROLE_ARN" \
+                      --arg taskRole "$TASK_ROLE_ARN" \
+                      '{
+                        family: "${EnvName}-app",
+                        networkMode: "awsvpc",
+                        requiresCompatibilities: ["FARGATE"],
+                        cpu: "256",
+                        memory: "512",
+                        executionRoleArn: $executionRole,
+                        taskRoleArn: $taskRole,
+                        containerDefinitions: [{
+                          name: "app",
+                          image: "IMAGE1_NAME",
+                          portMappings: [{ containerPort: 8080, protocol: "tcp" }],
+                          essential: true,
+                          logConfiguration: {
+                            logDriver: "awslogs",
+                            options: {
+                              "awslogs-group": "/ecs/${EnvName}-app",
+                              "awslogs-region": "${AWS::Region}",
+                              "awslogs-stream-prefix": "ecs"
+                            }
+                          }
+                        }]
+                      }' > taskdef.json
+                  - |
+                    cat > appspec.yaml << 'APPSPEC_EOF'
+                    version: 0.0
+                    Resources:
+                      - TargetService:
+                          Type: AWS::ECS::Service
+                          Properties:
+                            TaskDefinition: "<TASK_DEFINITION>"
+                            LoadBalancerInfo:
+                              ContainerName: "app"
+                              ContainerPort: 8080
+                    APPSPEC_EOF
+            artifacts:
+              files:
+                - taskdef.json
+                - appspec.yaml
+          - EnvName: !Ref EnvironmentName
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        EnvironmentVariables:
+        - Name: TASK_EXECUTION_ROLE_ARN
+          Value: !Ref EcsTaskExecutionRoleArn
+        - Name: TASK_ROLE_ARN
+          Value: !Ref EcsTaskRoleArn
+      Artifacts:
+        Type: CODEPIPELINE
+      Tags:
+      - Key: Project
+        Value: ecs-cicd-lab
+
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
@@ -113,19 +192,6 @@ Resources:
       Stages:
       - Name: Source
         Actions:
-        - Name: TaskDefSource
-          ActionTypeId:
-            Category: Source
-            Owner: AWS
-            Provider: S3
-            Version: '1'
-          Configuration:
-            S3Bucket: !Ref ArtifactBucket
-            S3ObjectKey: source.zip
-            PollForSourceChanges: 'false'
-          OutputArtifacts:
-          - Name: TaskDefArtifact
-          RunOrder: 1
         - Name: ImageSource
           ActionTypeId:
             Category: Source
@@ -138,6 +204,21 @@ Resources:
           OutputArtifacts:
           - Name: ImageArtifact
           RunOrder: 1
+      - Name: Build
+        Actions:
+        - Name: BuildTaskDef
+          ActionTypeId:
+            Category: Build
+            Owner: AWS
+            Provider: CodeBuild
+            Version: '1'
+          Configuration:
+            ProjectName: !Ref CodeBuildProject
+          InputArtifacts:
+          - Name: ImageArtifact
+          OutputArtifacts:
+          - Name: DeployArtifact
+          RunOrder: 1
       - Name: Deploy
         Actions:
         - Name: BlueGreenDeploy
@@ -149,15 +230,15 @@ Resources:
           Configuration:
             ApplicationName: !Ref CodeDeployApplication
             DeploymentGroupName: !Ref CodeDeployDeploymentGroup
-            TaskDefinitionTemplateArtifact: TaskDefArtifact
+            TaskDefinitionTemplateArtifact: DeployArtifact
             TaskDefinitionTemplatePath: taskdef.json
-            AppSpecTemplateArtifact: TaskDefArtifact
-            AppSpecTemplatePath: appspec.json
+            AppSpecTemplateArtifact: DeployArtifact
+            AppSpecTemplatePath: appspec.yaml
             Image1ArtifactName: ImageArtifact
             Image1ContainerName: IMAGE1_NAME
           InputArtifacts:
-          - Name: TaskDefArtifact
           - Name: ImageArtifact
+          - Name: DeployArtifact
           RunOrder: 1
 
   EcrPushEventRule:

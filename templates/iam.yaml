@@ -59,16 +59,7 @@ Resources:
             - ecr:CompleteLayerUpload
             - ecr:DescribeImages
             Resource: !Ref EcrRepositoryArn
-          - Sid: LiveTaskDefRead
-            Effect: Allow
-            Action:
-            - ecs:DescribeTaskDefinition
-            Resource: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${EnvironmentName}-app:*
-          - Sid: UploadTaskDefBundle
-            Effect: Allow
-            Action:
-            - s3:PutObject
-            Resource: !Sub arn:aws:s3:::${EnvironmentName}-artifacts-${AWS::AccountId}/source.zip
+
       Tags:
       - Key: Project
         Value: ecs-cicd-lab
@@ -170,6 +161,40 @@ Resources:
             - ssmmessages:OpenControlChannel
             - ssmmessages:OpenDataChannel
             Resource: '*'
+      Tags:
+      - Key: Project
+        Value: ecs-cicd-lab
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${EnvironmentName}-codebuild-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+      - PolicyName: CodeBuildPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${EnvironmentName}-build:*
+          - Effect: Allow
+            Action:
+            - s3:GetObject
+            - s3:GetObjectVersion
+            - s3:PutObject
+            Resource:
+            - !Sub arn:aws:s3:::${EnvironmentName}-artifacts-${AWS::AccountId}
+            - !Sub arn:aws:s3:::${EnvironmentName}-artifacts-${AWS::AccountId}/*
       Tags:
       - Key: Project
         Value: ecs-cicd-lab
@@ -278,6 +303,8 @@ Outputs:
     Value: !GetAtt EcsTaskExecutionRole.Arn
   EcsTaskRoleArn:
     Value: !GetAtt EcsTaskRole.Arn
+  CodeBuildRoleArn:
+    Value: !GetAtt CodeBuildRole.Arn
   CodePipelineRoleArn:
     Value: !GetAtt CodePipelineRole.Arn
   EventBridgeRoleArn:
