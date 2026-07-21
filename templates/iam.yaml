@@ -184,6 +184,9 @@ Resources:
           - Effect: Allow
             Action:
             - logs:CreateLogGroup
+            Resource: '*'
+          - Effect: Allow
+            Action:
             - logs:CreateLogStream
             - logs:PutLogEvents
             Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${EnvironmentName}-build:*
@@ -243,6 +246,11 @@ Resources:
             Action:
             - ecr:DescribeImages
             Resource: !Ref EcrRepositoryArn
+          - Effect: Allow
+            Action:
+            - codebuild:StartBuild
+            - codebuild:BatchGetBuilds
+            Resource: !Sub arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${EnvironmentName}-build
           - Effect: Allow
             Action:
             - iam:PassRole
