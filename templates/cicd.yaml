@@ -136,7 +136,7 @@ Resources:
                         taskRoleArn: $taskRole,
                         containerDefinitions: [{
                           name: "app",
-                          image: "IMAGE1_NAME",
+                          image: "<IMAGE1_NAME>",
                           portMappings: [{ containerPort: 8080, protocol: "tcp" }],
                           essential: true,
                           logConfiguration: {
