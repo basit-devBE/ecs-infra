@@ -5,14 +5,6 @@ Description: >
 Parameters:
   EnvironmentName:
     Type: String
-  CodeStarConnectionArn:
-    Type: String
-  GitHubOrg:
-    Type: String
-  AppRepoName:
-    Type: String
-  AppRepoBranch:
-    Type: String
   EcrRepositoryName:
     Type: String
   CodePipelineRoleArn:
@@ -121,20 +113,18 @@ Resources:
       Stages:
       - Name: Source
         Actions:
-        - Name: DeploymentArtifacts
+        - Name: TaskDefSource
           ActionTypeId:
             Category: Source
             Owner: AWS
-            Provider: CodeStarSourceConnection
+            Provider: S3
             Version: '1'
           Configuration:
-            ConnectionArn: !Ref CodeStarConnectionArn
-            FullRepositoryId: !Sub ${GitHubOrg}/${AppRepoName}
-            BranchName: !Ref AppRepoBranch
-            DetectChanges: 'false'
-            OutputArtifactFormat: CODE_ZIP
+            S3Bucket: !Ref ArtifactBucket
+            S3ObjectKey: source.zip
+            PollForSourceChanges: 'false'
           OutputArtifacts:
-          - Name: SourceArtifact
+          - Name: TaskDefArtifact
           RunOrder: 1
         - Name: ImageSource
           ActionTypeId:
@@ -159,14 +149,14 @@ Resources:
           Configuration:
             ApplicationName: !Ref CodeDeployApplication
             DeploymentGroupName: !Ref CodeDeployDeploymentGroup
-            TaskDefinitionTemplateArtifact: SourceArtifact
+            TaskDefinitionTemplateArtifact: TaskDefArtifact
             TaskDefinitionTemplatePath: taskdef.json
-            AppSpecTemplateArtifact: SourceArtifact
+            AppSpecTemplateArtifact: TaskDefArtifact
             AppSpecTemplatePath: appspec.json
             Image1ArtifactName: ImageArtifact
             Image1ContainerName: IMAGE1_NAME
           InputArtifacts:
-          - Name: SourceArtifact
+          - Name: TaskDefArtifact
           - Name: ImageArtifact
           RunOrder: 1
 

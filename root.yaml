@@ -35,18 +35,10 @@ Parameters:
     Type: String
     Default: ecs-app
     Description: GitHub app repository name — OIDC trust is scoped to this repo
-  AppRepoBranch:
-    Type: String
-    Default: main
-    Description: Branch in the app repo that CodePipeline tracks
   InfraRepoName:
     Type: String
     Default: ecs-infra
     Description: GitHub infra repository name — OIDC trust for the template-sync workflow is scoped to this repo
-  CodeStarConnectionArn:
-    Type: String
-    Description: >
-      ARN of the CodeConnections GitHub connection (create in AWS Console under Developer Tools - Connections, then authorize it)
 
   HealthCheckPath:
     Type: String
@@ -132,7 +124,6 @@ Resources:
         GitHubOrg: !Ref GitHubOrg
         AppRepoName: !Ref AppRepoName
         InfraRepoName: !Ref InfraRepoName
-        CodeStarConnectionArn: !Ref CodeStarConnectionArn
         BootstrapRepositoryName: !Ref BootstrapRepositoryName
         EcrRepositoryArn: !GetAtt EcrStack.Outputs.EcrRepositoryArn
         TemplatesBucketName: !Ref TemplatesBucketName
@@ -193,10 +184,6 @@ Resources:
       TemplateURL: !Sub https://${TemplatesBucketName}.s3.${AWS::Region}.amazonaws.com/templates/cicd.yaml
       Parameters:
         EnvironmentName: !Ref EnvironmentName
-        CodeStarConnectionArn: !Ref CodeStarConnectionArn
-        GitHubOrg: !Ref GitHubOrg
-        AppRepoName: !Ref AppRepoName
-        AppRepoBranch: !Ref AppRepoBranch
         EcrRepositoryName: !GetAtt EcrStack.Outputs.EcrRepositoryName
         CodePipelineRoleArn: !GetAtt IamStack.Outputs.CodePipelineRoleArn
         CodeDeployRoleArn: !GetAtt IamStack.Outputs.CodeDeployRoleArn

@@ -12,8 +12,6 @@ Parameters:
     Type: String
   InfraRepoName:
     Type: String
-  CodeStarConnectionArn:
-    Type: String
   BootstrapRepositoryName:
     Type: String
   EcrRepositoryArn:
@@ -61,6 +59,16 @@ Resources:
             - ecr:CompleteLayerUpload
             - ecr:DescribeImages
             Resource: !Ref EcrRepositoryArn
+          - Sid: LiveTaskDefRead
+            Effect: Allow
+            Action:
+            - ecs:DescribeTaskDefinition
+            Resource: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${EnvironmentName}-app:*
+          - Sid: UploadTaskDefBundle
+            Effect: Allow
+            Action:
+            - s3:PutObject
+            Resource: !Sub arn:aws:s3:::${EnvironmentName}-artifacts-${AWS::AccountId}/source.zip
       Tags:
       - Key: Project
         Value: ecs-cicd-lab
@@ -191,11 +199,6 @@ Resources:
             Resource:
             - !Sub arn:aws:s3:::${EnvironmentName}-artifacts-${AWS::AccountId}
             - !Sub arn:aws:s3:::${EnvironmentName}-artifacts-${AWS::AccountId}/*
-          - Effect: Allow
-            Action:
-            - codestar-connections:UseConnection
-            - codeconnections:UseConnection
-            Resource: !Ref CodeStarConnectionArn
           - Effect: Allow
             Action:
             - codedeploy:CreateDeployment
